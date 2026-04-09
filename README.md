@@ -94,7 +94,7 @@ Open **http://127.0.0.1:5000** in your browser.
 - Verdict banner shows whether the prediction was correct and % price change
 
 ### Multi-Ticker Support
-- Type any Yahoo Finance ticker (e.g., 'CL=F',`BZ=F`, `GC=F`, `NG=F`, `AAPL`, `SPY`)
+- Type any Yahoo Finance ticker (e.g., `CL=F`,`BZ=F`, `GC=F`, `NG=F`, `AAPL`, `SPY`)
 - Full pipeline re-runs against the new symbol
 
 ---
