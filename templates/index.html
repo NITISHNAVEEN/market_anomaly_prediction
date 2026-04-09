@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OilSense — Market Anomaly Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+  :root {
+    --bg:        #08090d;
+    --surface:   #0f1118;
+    --card:      #141720;
+    --border:    #1e2233;
+    --accent:    #e8c547;
+    --accent2:   #4ee3b5;
+    --red:       #ff4d6d;
+    --green:     #39d98a;
+    --blue:      #5b8dee;
+    --orange:    #ff9f43;
+    --text:      #e2e8f0;
+    --muted:     #6b7a99;
+    --font-head: 'Bebas Neue', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --font-body: 'DM Sans', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── NOISE TEXTURE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.4;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(8,9,13,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+  }
+  .logo {
+    font-family: var(--font-head);
+    font-size: 2rem; letter-spacing: 0.08em;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(232,197,71,0.4);
+  }
+  .logo span { color: var(--text); }
+  .header-right {
+    display: flex; align-items: center; gap: 1.5rem;
+  }
+  .live-badge {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-family: var(--font-mono); font-size: 0.75rem;
+    color: var(--accent2); letter-spacing: 0.1em;
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent2);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+  .refresh-btn {
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--text); padding: 0.4rem 1rem;
+    border-radius: 6px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 0.75rem;
+    letter-spacing: 0.08em; transition: all 0.2s;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  #last-update {
+    font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted);
+  }
+  .mode-btn {
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--muted); padding: 0.35rem 0.9rem;
+  border-radius: 6px; cursor: pointer;
+  font-family: var(--font-mono); font-size: 0.72rem;
+  letter-spacing: 0.08em; transition: all 0.2s;
+  }
+  .mode-btn.active {
+  border-color: var(--accent); color: var(--accent);
+  background: rgba(232,197,71,0.08);
+  }
+.mode-btn:hover:not(.active) { border-color: var(--muted); color: var(--text); }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    position: relative; z-index: 1;
+    max-width: 1440px; margin: 0 auto;
+    padding: 2rem;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    grid-template-rows: auto auto;
+    gap: 1.5rem;
+  }
+
+  /* ── VERDICT CARD ── */
+  .verdict-card {
+    grid-column: 1; grid-row: 1;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex; flex-direction: column; gap: 1rem;
+    position: relative; overflow: hidden;
+  }
+  .verdict-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--verdict-color, var(--accent));
+    transition: background 0.5s;
+  }
+  .verdict-label {
+    font-family: var(--font-mono); font-size: 0.65rem;
+    color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase;
+  }
+  .verdict-main {
+    display: flex; align-items: center; gap: 1rem;
+  }
+  .verdict-icon {
+    font-size: 3rem; line-height: 1;
+    filter: drop-shadow(0 0 16px var(--verdict-color, var(--accent)));
+    transition: filter 0.5s;
+  }
+  .verdict-text {
+    font-family: var(--font-head);
+    font-size: 2.8rem; letter-spacing: 0.06em;
+    color: var(--verdict-color, var(--accent));
+    transition: color 0.5s;
+    text-shadow: 0 0 40px var(--verdict-color, transparent);
+  }
+  .verdict-sub {
+    font-family: var(--font-mono); font-size: 0.72rem;
+    color: var(--muted); line-height: 1.6;
+  }
+  .verdict-sub strong { color: var(--text); }
+
+  /* confidence bars */
+  .prob-section { display: flex; flex-direction: column; gap: 0.5rem; }
+  .prob-row { display: flex; flex-direction: column; gap: 0.25rem; }
+  .prob-header {
+    display: flex; justify-content: space-between;
+    font-family: var(--font-mono); font-size: 0.68rem;
+  }
+  .prob-name { color: var(--muted); }
+  .prob-val  { color: var(--text); }
+  .prob-bar-bg {
+    height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+  }
+  .prob-bar-fill {
+    height: 100%; border-radius: 2px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* sub models */
+  .sub-models {
+    border-top: 1px solid var(--border); padding-top: 1rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .sub-model-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--font-mono); font-size: 0.68rem;
+  }
+  .sub-model-name { color: var(--muted); }
+  .sub-model-val  { color: var(--text); }
+  .tag {
+    display: inline-block; padding: 0.15rem 0.5rem;
+    border-radius: 4px; font-size: 0.62rem; font-weight: 500;
+    letter-spacing: 0.06em;
+  }
+  .tag-normal  { background: rgba(107,122,153,0.2); color: var(--muted); }
+  .tag-spike   { background: rgba(232,197,71,0.15); color: var(--accent); }
+  .tag-crash   { background: rgba(255,77,109,0.15); color: var(--red); }
+  .tag-bubble  { background: rgba(78,227,181,0.15); color: var(--accent2); }
+
+  /* ── METRICS ROW ── */
+  .metrics-row {
+    grid-column: 1; grid-row: 2;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+
+  .metric-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem 1.2rem;
+    display: flex; flex-direction: column; gap: 0.3rem;
+  }
+  .metric-title {
+    font-family: var(--font-mono); font-size: 0.62rem;
+    color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .metric-value {
+    font-family: var(--font-head); font-size: 1.8rem;
+    letter-spacing: 0.04em; color: var(--text);
+  }
+  .metric-sub {
+    font-family: var(--font-mono); font-size: 0.65rem; color: var(--muted);
+  }
+
+  /* bubble warning */
+  .bubble-warning {
+    background: rgba(78,227,181,0.05);
+    border: 1px solid rgba(78,227,181,0.3);
+    border-radius: 12px; padding: 1rem 1.2rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    position: relative; overflow: hidden;
+  }
+  .bubble-warning::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at top right,
+      rgba(78,227,181,0.06) 0%, transparent 70%);
+  }
+  .bubble-title {
+    font-family: var(--font-mono); font-size: 0.62rem;
+    color: var(--accent2); letter-spacing: 0.12em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .bubble-title::before { content: '⚠'; font-size: 0.8rem; }
+  .bubble-severity {
+    font-family: var(--font-head); font-size: 1.6rem;
+    color: var(--accent2);
+  }
+  .bubble-bar-bg {
+    height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .bubble-bar-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width 0.8s ease;
+  }
+  .bubble-inactive {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem 1.2rem;
+    display: flex; align-items: center; gap: 0.5rem;
+    font-family: var(--font-mono); font-size: 0.68rem; color: var(--muted);
+  }
+
+  /* stress badge */
+  .stress-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem 1.2rem;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .stress-label {
+    font-family: var(--font-mono); font-size: 0.62rem;
+    color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .stress-badge {
+    font-family: var(--font-mono); font-size: 0.72rem;
+    padding: 0.3rem 0.8rem; border-radius: 20px; letter-spacing: 0.1em;
+  }
+  .stress-HIGH   { background: rgba(255,77,109,0.15); color: var(--red); border: 1px solid rgba(255,77,109,0.3); }
+  .stress-MEDIUM { background: rgba(255,159,67,0.15); color: var(--orange); border: 1px solid rgba(255,159,67,0.3); }
+  .stress-LOW    { background: rgba(57,217,138,0.12); color: var(--green); border: 1px solid rgba(57,217,138,0.3); }
+
+  /* ── CHART AREA ── */
+  .chart-card {
+    grid-column: 2; grid-row: 1 / 3;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 1.5rem;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  .chart-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  .chart-title {
+    font-family: var(--font-head); font-size: 1.4rem;
+    letter-spacing: 0.06em; color: var(--text);
+  }
+  .chart-subtitle {
+    font-family: var(--font-mono); font-size: 0.65rem;
+    color: var(--muted); margin-top: 0.2rem;
+  }
+  .chart-legend {
+    display: flex; gap: 1rem; flex-wrap: wrap; justify-content: flex-end;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-family: var(--font-mono); font-size: 0.65rem; color: var(--muted);
+  }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .legend-line { width: 16px; height: 2px; border-radius: 1px; }
+  .chart-wrap { flex: 1; min-height: 420px; position: relative; }
+  canvas { width: 100% !important; }
+
+  /* ── LOADING OVERLAY ── */
+  #loading {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(8,9,13,0.85);
+    backdrop-filter: blur(8px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1.5rem;
+  }
+  .spinner {
+    width: 48px; height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text {
+    font-family: var(--font-mono); font-size: 0.8rem;
+    color: var(--muted); letter-spacing: 0.1em;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #loading.hidden { display: none; }
+
+  /* ── ERROR BANNER ── */
+  #error-banner {
+    display: none;
+    background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3);
+    border-radius: 10px; padding: 1rem 1.5rem; margin: 0 2rem;
+    font-family: var(--font-mono); font-size: 0.75rem; color: var(--red);
+    position: relative; z-index: 1;
+  }
+  #error-banner.visible { display: block; }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1024px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto; }
+    .chart-card { grid-column: 1; grid-row: auto; }
+    .metrics-row { flex-direction: row; flex-wrap: wrap; }
+    .metric-card, .bubble-warning, .bubble-inactive, .stress-card { flex: 1; min-width: 160px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">FETCHING LIVE DATA & RUNNING ENSEMBLE MODEL...</div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">OIL<span>SENSE</span></div>
+  <div style="display:flex; gap:0.5rem; align-items:center;">
+  <button class="mode-btn active" id="btn-live"     onclick="setMode('live')">⚡ LIVE</button>
+  <button class="mode-btn"        id="btn-backtest" onclick="setMode('backtest')">🔍 BACKTEST</button>
+    </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE · <span id="active-ticker">CL=F</span></div>
+    
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+        <input 
+        id="ticker-input" 
+        type="text" 
+        value="CL=F" 
+        placeholder="e.g. CL=F, BZ=F, GC=F"
+        style="
+            background: var(--card); border: 1px solid var(--border);
+            color: var(--text); padding: 0.4rem 0.75rem;
+            border-radius: 6px; font-family: var(--font-mono);
+            font-size: 0.75rem; letter-spacing: 0.08em;
+            width: 140px; outline: none;
+            transition: border-color 0.2s;
+        "
+        onkeydown="if(event.key==='Enter') loadData()"
+        onfocus="this.style.borderColor='var(--accent)'"
+        onblur="this.style.borderColor='var(--border)'"
+        />
+        <button class="refresh-btn" id="refresh-btn" onclick="loadData()">▶ RUN</button>
+    </div>
+
+    <span id="last-update">—</span>
+    </div>
+</header>
+<div id="backtest-bar" style="display:none; align-items:center; gap:1rem;
+     padding: 0.75rem 2rem; background: rgba(91,141,238,0.06);
+     border-bottom: 1px solid var(--border); position:relative; z-index:1;">
+  <span style="font-family:var(--font-mono);font-size:0.7rem;color:var(--muted);letter-spacing:0.1em">
+    BACKTEST DATE
+  </span>
+  <input type="date" id="backtest-date"
+    style="background:var(--card); border:1px solid var(--border); color:var(--text);
+           padding:0.35rem 0.75rem; border-radius:6px; font-family:var(--font-mono);
+           font-size:0.75rem; outline:none; cursor:pointer;"
+    onfocus="this.style.borderColor='var(--blue)'"
+    onblur="this.style.borderColor='var(--border)'"
+  />
+  <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--muted)">
+    ← must be ≤ today minus 3 days
+  </span>
+  <button class="refresh-btn" onclick="loadData()" style="border-color:var(--blue);color:var(--blue)">
+    ▶ RUN BACKTEST
+  </button>
+</div>
+<!-- ERROR -->
+<div id="error-banner"></div>
+<div id="backtest-verdict" style="display:none; grid-column:1/-1;
+     border-radius:12px; padding:1rem 1.5rem;
+     font-family:var(--font-mono); font-size:0.75rem;
+     border: 1px solid var(--border); background: var(--card);">
+</div>
+<!-- MAIN -->
+<main>
+
+  <!-- ── VERDICT CARD ── -->
+  <div class="verdict-card" id="verdict-card">
+    <div class="verdict-label">ENSEMBLE PREDICTION · NEXT 1–3 DAYS</div>
+    <div class="verdict-main">
+      <div class="verdict-icon" id="verdict-icon">—</div>
+      <div class="verdict-text" id="verdict-text">—</div>
+    </div>
+    <div class="verdict-sub" id="verdict-sub">Awaiting data...</div>
+
+    <div class="prob-section" id="prob-section"></div>
+
+    <div class="sub-models" id="sub-models">
+      <div class="verdict-label">MODEL BREAKDOWN</div>
+    </div>
+  </div>
+
+  <!-- ── METRICS ── -->
+  <div class="metrics-row">
+
+    <div class="metric-card">
+      <div class="metric-title">Last Close Price</div>
+      <div class="metric-value" id="last-close">—</div>
+      <div class="metric-sub" id="last-date">—</div>
+    </div>
+
+    <div id="bubble-container">
+      <div class="bubble-inactive" id="bubble-off">
+        <span style="color:var(--green)">●</span> No bubble detected today
+      </div>
+    </div>
+
+    <div class="stress-card">
+      <div>
+        <div class="stress-label">Volatility Stress</div>
+        <div class="metric-sub" id="vol-ratio">Vol ratio: —</div>
+      </div>
+      <div class="stress-badge" id="stress-badge">—</div>
+    </div>
+
+  </div>
+
+  <!-- ── CHART ── -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">PRICE HISTORY + 3-DAY FORECAST</div>
+        <div class="chart-subtitle" id="chart-subtitle">Last 90 trading days · Ensemble projection with uncertainty band</div>
+      </div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-line" style="background:#5b8dee"></div>Close</div>
+        <div class="legend-item"><div class="legend-line" style="background:#e8c547"></div>MA20</div>
+        <div class="legend-item"><div class="legend-line" style="background:#4ee3b5"></div>MA50</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff9f43"></div>Forecast</div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── CONFIG ──────────────────────────────────
+const COLORS = {
+  NORMAL : { hex:'#6b7a99', icon:'✅' },
+  SPIKE  : { hex:'#e8c547', icon:'📈' },
+  CRASH  : { hex:'#ff4d6d', icon:'📉' },
+  BUBBLE : { hex:'#4ee3b5', icon:'🫧' },
+};
+const PROB_COLORS = ['#6b7a99','#e8c547','#ff4d6d','#4ee3b5'];
+
+let chartInstance = null;
+let currentMode   = 'live';
+
+// ── MODE TOGGLE ──────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-live').classList.toggle('active',     mode === 'live');
+  document.getElementById('btn-backtest').classList.toggle('active', mode === 'backtest');
+  document.getElementById('backtest-bar').style.display     = mode === 'backtest' ? 'flex' : 'none';
+  document.getElementById('backtest-verdict').style.display = 'none';
+
+  // Set max date on the date picker = today - 3
+  if (mode === 'backtest') {
+    const maxDate = new Date();
+    maxDate.setDate(maxDate.getDate() - 3);
+    document.getElementById('backtest-date').max =
+      maxDate.toISOString().split('T')[0];
+    // Default to max date if empty
+    if (!document.getElementById('backtest-date').value)
+      document.getElementById('backtest-date').value = maxDate.toISOString().split('T')[0];
+  }
+}
+
+// ── MAIN DATA LOAD ───────────────────────────
+async function loadData() {
+  const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
+  if (!ticker) return;
+
+  showLoading(true);
+  hideError();
+  document.getElementById('refresh-btn').disabled = true;
+  document.getElementById('active-ticker').textContent = ticker;
+  document.getElementById('backtest-verdict').style.display = 'none';
+
+  try {
+    let url, res, data;
+
+    if (currentMode === 'backtest') {
+      const date = document.getElementById('backtest-date').value;
+      if (!date) { showError('Please select a backtest date.'); return; }
+      url  = `/api/backtest?ticker=${encodeURIComponent(ticker)}&date=${date}`;
+    } else {
+      url  = `/api/predict?ticker=${encodeURIComponent(ticker)}`;
+    }
+
+    res  = await fetch(url);
+    data = await res.json();
+
+    if (!res.ok || data.error) {
+      showError(data.error || 'Unknown server error', data.trace);
+      return;
+    }
+
+    renderVerdict(data.prediction);
+    renderMetrics(data.prediction);
+    renderChart(data.chart, data.prediction, data.actuals || null);
+
+    // Show backtest verdict banner
+    if (currentMode === 'backtest' && data.verdict) {
+      renderBacktestVerdict(data.verdict, data.actuals);
+    }
+
+    document.getElementById('last-update').textContent =
+      (currentMode === 'backtest' ? 'Backtest @ ' : 'Updated ') +
+      (data.prediction.query_date || new Date().toLocaleTimeString());
+
+  } catch(e) {
+    showError('Network error: ' + e.message);
+  } finally {
+    showLoading(false);
+    document.getElementById('refresh-btn').disabled = false;
+  }
+}
+
+// ── BACKTEST VERDICT BANNER ──────────────────
+function renderBacktestVerdict(verdict, actuals) {
+  const el     = document.getElementById('backtest-verdict');
+  const correct= verdict.correct;
+  const color  = correct ? 'var(--green)' : 'var(--red)';
+  const icon   = correct ? '✓' : '✗';
+
+  el.style.borderColor = correct ? 'rgba(57,217,138,0.4)' : 'rgba(255,77,109,0.4)';
+  el.style.background  = correct ? 'rgba(57,217,138,0.05)' : 'rgba(255,77,109,0.05)';
+
+  const actualsHtml = actuals && actuals.dates.length > 0
+    ? actuals.dates.map((d, i) =>
+        `<span style="color:var(--text)">${d}: <strong>$${actuals.closes[i]}</strong></span>`
+      ).join('  ·  ')
+    : 'No actual data yet.';
+
+  el.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+      <div>
+        <div style="color:${color}; font-size:0.85rem; margin-bottom:0.4rem;">
+          ${icon} PREDICTION ${correct ? 'CORRECT' : 'INCORRECT'}
+        </div>
+        <div style="color:var(--muted); line-height:1.8">${verdict.reason}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="color:var(--muted); font-size:0.62rem; margin-bottom:0.3rem; letter-spacing:0.1em">
+          ACTUAL PRICES (next ${actuals ? actuals.dates.length : 0} days)
+        </div>
+        <div style="color:var(--text); font-size:0.7rem">${actualsHtml}</div>
+      </div>
+    </div>`;
+  el.style.display = 'block';
+}
+
+// ── VERDICT ──────────────────────────────────
+function renderVerdict(pred) {
+  const label = pred.label;
+  const color = COLORS[label].hex;
+  const icon  = COLORS[label].icon;
+
+  document.getElementById('verdict-card').style.setProperty('--verdict-color', color);
+  document.getElementById('verdict-icon').textContent = icon;
+  document.getElementById('verdict-text').textContent = label;
+
+  const horizonText = {
+    NORMAL : `No anomaly expected in the next ${pred.forecast_horizon} trading days.`,
+    SPIKE  : `⚡ Upward spike likely within the next ${pred.forecast_horizon} trading days.`,
+    CRASH  : `🚨 Downward crash signal detected. Potential sharp decline within ${pred.forecast_horizon} days.`,
+    BUBBLE : `🫧 Price is in bubble territory. Extended above 50-day MA by ${pred.bubble_severity}%.`,
+  };
+  const modeNote = currentMode === 'backtest'
+    ? `<span style="color:var(--blue)">🔍 Backtest as of ${pred.query_date}</span><br>` : '';
+  document.getElementById('verdict-sub').innerHTML =
+    `${modeNote}<strong>Horizon: ${pred.forecast_horizon} days</strong><br>${horizonText[label]}`;
+
+  const probs  = pred.probabilities;
+  const labels = ['NORMAL','SPIKE','CRASH','BUBBLE'];
+  document.getElementById('prob-section').innerHTML = labels.map((l, i) => `
+    <div class="prob-row">
+      <div class="prob-header">
+        <span class="prob-name">${l}</span>
+        <span class="prob-val">${probs[l]}%</span>
+      </div>
+      <div class="prob-bar-bg">
+        <div class="prob-bar-fill" style="width:${probs[l]}%; background:${PROB_COLORS[i]}"></div>
+      </div>
+    </div>`).join('');
+
+  const sub = pred.sub_predictions;
+  document.getElementById('sub-models').innerHTML = `
+    <div class="verdict-label" style="margin-bottom:0.25rem">MODEL BREAKDOWN</div>
+    ${renderSubRow('Transformer', sub.transformer)}
+    ${renderSubRow('XGBoost + SMOTE', sub.xgboost)}
+    <div class="sub-model-row">
+      <span class="sub-model-name">Isolation Forest</span>
+      <span class="sub-model-val">${sub.iso_score}
+        <span style="color:var(--muted);font-size:0.6rem">
+          ${sub.iso_score > 0.5 ? '(anomalous)' : '(normal)'}
+        </span>
+      </span>
+    </div>`;
+}
+
+function renderSubRow(name, label) {
+  return `<div class="sub-model-row">
+    <span class="sub-model-name">${name}</span>
+    <span class="tag tag-${label.toLowerCase()}">${label}</span>
+  </div>`;
+}
+
+// ── METRICS ──────────────────────────────────
+function renderMetrics(pred) {
+  document.getElementById('last-close').textContent = '$' + pred.last_close.toFixed(2);
+  document.getElementById('last-date').textContent  =
+    (currentMode === 'backtest' ? 'Query date: ' : '') + pred.last_date;
+
+  const bubbleContainer = document.getElementById('bubble-container');
+  if (pred.bubble_active) {
+    const pct = Math.min(pred.bubble_severity, 30);
+    bubbleContainer.innerHTML = `
+      <div class="bubble-warning">
+        <div class="bubble-title">Bubble Active</div>
+        <div class="bubble-severity">+${pred.bubble_severity.toFixed(1)}% above MA50</div>
+        <div class="bubble-bar-bg">
+          <div class="bubble-bar-fill" style="width:${(pct/30)*100}%"></div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:0.63rem;color:var(--muted)">
+          Price is extended. Momentum: active bubble regime.
+        </div>
+      </div>`;
+  } else {
+    bubbleContainer.innerHTML = `
+      <div class="bubble-inactive">
+        <span style="color:var(--green)">●</span>
+        No bubble detected &nbsp;·&nbsp; MA50 ratio normal
+      </div>`;
+  }
+
+  document.getElementById('stress-badge').textContent = pred.stress_level;
+  document.getElementById('stress-badge').className   = 'stress-badge stress-' + pred.stress_level;
+  document.getElementById('vol-ratio').textContent    = 'Vol ratio (5d/20d): ' + pred.vol_ratio;
+}
+
+// ── CHART ────────────────────────────────────
+function renderChart(chart, pred, actuals) {
+  const hist    = chart.history;
+  const fore    = chart.forecast;
+  const label   = pred.label;
+  const fcColor = COLORS[label].hex;
+
+  const allDates     = [...hist.dates, ...fore.dates.slice(1)];
+  const histLen      = hist.dates.length;
+  const foreStartIdx = histLen - 1;
+
+  const padNull = (arr) => Array(foreStartIdx).fill(null).concat(arr);
+  const forecastMid   = padNull(fore.mid);
+  const forecastUpper = padNull(fore.upper);
+  const forecastLower = padNull(fore.lower);
+  const historicalClose = hist.closes.concat(Array(fore.dates.length - 1).fill(null));
+  const ma20            = hist.ma20.concat(Array(fore.dates.length - 1).fill(null));
+  const ma50            = hist.ma50.concat(Array(fore.dates.length - 1).fill(null));
+
+  // Build actuals dataset for backtest mode
+  let actualsDataset = null;
+  if (actuals && actuals.dates.length > 0) {
+    // Map actual dates onto allDates x-axis
+    const actualMapped = allDates.map(d => {
+      const idx = actuals.dates.indexOf(d);
+      return idx >= 0 ? actuals.closes[idx] : null;
+    });
+    // Anchor to last historical close
+    const anchorIdx = allDates.indexOf(fore.dates[0]);
+    if (anchorIdx >= 0) actualMapped[anchorIdx] = pred.last_close;
+
+    actualsDataset = {
+      label: 'Actual',
+      data : actualMapped,
+      borderColor: '#39d98a',
+      borderWidth: 2.5,
+      backgroundColor: 'transparent',
+      pointRadius: 5,
+      pointBackgroundColor: '#39d98a',
+      pointBorderColor: '#08090d',
+      pointBorderWidth: 2,
+      tension: 0.3,
+    };
+  }
+
+  const datasets = [
+    { label:'Forecast Upper', data:forecastUpper, borderColor:'transparent',
+      backgroundColor:hexAlpha(fcColor,0.12), fill:'+1', pointRadius:0, tension:0.4 },
+    { label:'Forecast Lower', data:forecastLower, borderColor:'transparent',
+      backgroundColor:hexAlpha(fcColor,0.12), fill:false, pointRadius:0, tension:0.4 },
+    { label:'Forecast', data:forecastMid, borderColor:fcColor, borderWidth:2,
+      borderDash:[6,4], backgroundColor:'transparent',
+      pointRadius:(ctx) => ctx.dataIndex===foreStartIdx ? 5 : 3,
+      pointBackgroundColor:fcColor, tension:0.3 },
+    { label:'Close', data:historicalClose, borderColor:'#5b8dee', borderWidth:2,
+      backgroundColor:'transparent', pointRadius:0, pointHoverRadius:5, tension:0.3 },
+    { label:'MA20', data:ma20, borderColor:'#e8c547', borderWidth:1.5,
+      borderDash:[4,3], backgroundColor:'transparent', pointRadius:0, tension:0.3 },
+    { label:'MA50', data:ma50, borderColor:'#4ee3b5', borderWidth:1.5,
+      borderDash:[4,3], backgroundColor:'transparent', pointRadius:0, tension:0.3 },
+  ];
+
+  // Insert actuals line just before close line (index 3)
+  if (actualsDataset) datasets.splice(3, 0, actualsDataset);
+
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(document.getElementById('priceChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: allDates, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#141720', borderColor:'#1e2233', borderWidth:1,
+          titleColor:'#6b7a99', bodyColor:'#e2e8f0',
+          titleFont:{ family:'DM Mono', size:11 },
+          bodyFont: { family:'DM Mono', size:11 },
+          padding:12,
+          callbacks: {
+            label: (ctx) => {
+              if (['Forecast Upper','Forecast Lower'].includes(ctx.dataset.label)) return null;
+              if (ctx.raw === null) return null;
+              return ` ${ctx.dataset.label}: $${Number(ctx.raw).toFixed(2)}`;
+            }
+          }
+        },
+        annotation: {
+          annotations: {
+            forecastLine: {
+              type:'line', xMin:allDates[foreStartIdx], xMax:allDates[foreStartIdx],
+              borderColor:hexAlpha(fcColor,0.5), borderWidth:1, borderDash:[4,4],
+              label:{ display:true, content: currentMode==='backtest' ? 'QUERY DATE' : 'TODAY',
+                      position:'start', color:fcColor,
+                      font:{ family:'DM Mono', size:9 },
+                      backgroundColor:'transparent', padding:4 }
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid:{color:'rgba(30,34,51,0.8)',drawTicks:false},
+             ticks:{color:'#6b7a99',font:{family:'DM Mono',size:10},maxTicksLimit:10,maxRotation:0},
+             border:{color:'#1e2233'} },
+        y: { position:'right',
+             grid:{color:'rgba(30,34,51,0.8)',drawTicks:false},
+             ticks:{color:'#6b7a99',font:{family:'DM Mono',size:10},
+                    callback:(v)=>'$'+v.toFixed(1)},
+             border:{color:'#1e2233'} }
+      }
+    }
+  });
+
+  const modeStr = currentMode === 'backtest'
+    ? `Backtest @ ${pred.query_date} · actual prices shown in green`
+    : 'Last 90 trading days · Ensemble projection with uncertainty band';
+  document.getElementById('chart-subtitle').textContent =
+    `${modeStr} · ${label} signal · ${fore.dates.length - 1}-day projection`;
+}
+
+// ── HELPERS ──────────────────────────────────
+function hexAlpha(hex, alpha) {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function showLoading(on) { document.getElementById('loading').classList.toggle('hidden',!on); }
+function showError(msg, trace) {
+  const el=document.getElementById('error-banner');
+  el.textContent='⚠ '+msg;
+  if(trace){ const pre=document.createElement('pre');
+    pre.style.cssText='margin-top:0.5rem;font-size:0.6rem;opacity:0.6;white-space:pre-wrap;';
+    pre.textContent=trace; el.appendChild(pre); }
+  el.classList.add('visible');
+}
+function hideError() {
+  const el=document.getElementById('error-banner');
+  el.classList.remove('visible'); el.textContent='';
+}
+
+// ── INIT ─────────────────────────────────────
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
