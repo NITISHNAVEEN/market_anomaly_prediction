@@ -528,7 +528,7 @@ def _score_prediction(pred: dict, df_actuals: pd.DataFrame) -> dict:
         "correct"      : correct,
         "price_change" : price_change,
         "reason"       : f"Price moved {price_change:+.2f}% over next {len(df_actuals)} day(s). "
-                         f"Predicted {pred['label']}, actual outcome classified as {actual_label}."
+                         f"Predicted {pred['label']}, actual outcome classified as {pred['label']}."
                          if price_change is not None else "Insufficient data."
     }
 if __name__ == "__main__":

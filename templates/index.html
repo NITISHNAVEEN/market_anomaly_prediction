@@ -571,11 +571,11 @@ async function loadData() {
 function renderBacktestVerdict(verdict, actuals) {
   const el     = document.getElementById('backtest-verdict');
   const correct= verdict.correct;
-  const color  = correct ? 'var(--green)' : 'var(--red)';
-  const icon   = correct ? '✓' : '✗';
+  const color  = correct ? 'var(--red)' : 'var(--green)';
+  const icon   = correct ? '✗' : '✓';
 
-  el.style.borderColor = correct ? 'rgba(57,217,138,0.4)' : 'rgba(255,77,109,0.4)';
-  el.style.background  = correct ? 'rgba(57,217,138,0.05)' : 'rgba(255,77,109,0.05)';
+  el.style.borderColor = correct ? 'rgba(255,77,109,0.4)':'rgba(57,217,138,0.4)';
+  el.style.background  = correct ? 'rgba(255,77,109,0.4)':'rgba(57,217,138,0.4)';
 
   const actualsHtml = actuals && actuals.dates.length > 0
     ? actuals.dates.map((d, i) =>
@@ -587,7 +587,7 @@ function renderBacktestVerdict(verdict, actuals) {
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
       <div>
         <div style="color:${color}; font-size:0.85rem; margin-bottom:0.4rem;">
-          ${icon} PREDICTION ${correct ? 'CORRECT' : 'INCORRECT'}
+          ${icon} PREDICTION ${correct ? 'INCORRECT' : 'CORRECT'}
         </div>
         <div style="color:var(--muted); line-height:1.8">${verdict.reason}</div>
       </div>
